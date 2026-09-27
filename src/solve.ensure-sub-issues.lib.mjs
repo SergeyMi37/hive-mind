@@ -87,7 +87,7 @@ export const fetchIssueBody = async ({ owner, repo, issueNumber }) => {
   // Issue #2135: `mirror: false` — the body can be very large.
   const result = await $(QUIET_PROBE)`gh api repos/${owner}/${repo}/issues/${issueNumber}`;
   if (result.code !== 0) {
-    const output = (result.stderr || result.stdout || '').toString().trim();
+    const output = (result.stderr?.toString() || result.stdout?.toString() || '').toString().trim();
     throw new Error(output || `gh api issues exited with code ${result.code}`);
   }
   const issue = JSON.parse(result.stdout.toString() || '{}');
