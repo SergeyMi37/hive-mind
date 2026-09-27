@@ -61,7 +61,7 @@ const prIssueLinking = await import('./pr-issue-linking.lib.mjs');
 const { buildIssueReference, ensureIssueLinkInPullRequestBody } = prIssueLinking;
 
 // Issue #2119: the one place that decides whether a pull request changed anything.
-const { formatChangeSummary, getPullRequestChangeStats } = await import('./pull-request-changes.lib.mjs');
+const { formatChangesSection, getPullRequestChangeStats, refreshPullRequestChangesSection } = await import('./pull-request-changes.lib.mjs');
 const { buildNoChangesNotice, capWorkingSessionSummary, formatWorkingSessionSummaryMarkdown, redactWorkspacePaths } = await import('./working-session-summary.lib.mjs');
 /**
  * Placeholder patterns used to detect auto-generated PR content that was not updated by the agent.
@@ -786,8 +786,7 @@ export const verifyResults = async (owner, repo, branchName, issueNumber, prNumb
 
 This pull request implements a solution for ${issueRef}: ${issueTitle}
 
-### Changes
-${formatChangeSummary(changeStats)}
+${formatChangesSection(changeStats)}
 
 ### Issue Reference
 Fixes ${issueRef}
@@ -809,6 +808,9 @@ Fixes ${issueRef}
               await fs.unlink(tempBodyFile).catch(() => {});
               await log(`  ⚠️  Error updating PR description: ${descError.message}`);
             }
+          } else if (!hasPlaceholder) {
+            // Issue #2318: the Changes section follows the diff after every session, for every model.
+            await refreshPullRequestChangesSection({ owner, repo, prNumber: pr.number, $, log });
           }
           // Check if PR is ready for review (convert from draft if necessary).
           // Issue #2182: this used to be an inline `gh pr ready` that bypassed

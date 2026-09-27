@@ -669,7 +669,14 @@ const getSubAgentCallsForModel = (modelId, subAgentCalls) => {
   });
 };
 
-export const buildBudgetStatsString = (tokenUsage, subAgentCalls = null) => {
+/**
+ * @param {Object} tokenUsage - `calculateSessionTokens()` result
+ * @param {Array|null} [subAgentCalls]
+ * @param {{freeModel?: boolean}} [options] - `freeModel`: the session's price is
+ *   $0.00, so no per-model cost is printed (issue #2318: the cost estimation
+ *   section is the single cost figure; the tool's list-price cost is not one).
+ */
+export const buildBudgetStatsString = (tokenUsage, subAgentCalls = null, { freeModel = false } = {}) => {
   if (!tokenUsage) return '';
 
   let stats = '\n\n### 📊 **Context and tokens usage:**';
@@ -767,7 +774,7 @@ export const buildBudgetStatsString = (tokenUsage, subAgentCalls = null) => {
       }
 
       // Issue #1600: Use Decimal for cost display precision
-      if (usage.costUSD !== null && usage.costUSD !== undefined) {
+      if (!freeModel && usage.costUSD !== null && usage.costUSD !== undefined) {
         totalLine += `, $${new Decimal(usage.costUSD).toFixed(6)} cost`;
       }
 
