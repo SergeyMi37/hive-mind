@@ -62,7 +62,7 @@ const { setupRepositoryAndClone, verifyDefaultBranchAndStatus } = await import('
 const { recordAfterCloneSize, recordAfterAgentSize } = await import('./solve.disk-diagnostics.lib.mjs');
 const { createOrCheckoutBranch } = await import('./solve.branch.lib.mjs');
 const { startWorkSession, endWorkSession, SESSION_TYPES } = await import('./solve.session.lib.mjs');
-const { attachFinalLogIfMissing } = await import('./attach-logs-guarantee.lib.mjs'); // Issue #1952
+const { attachFinalLogIfMissing, attachLogAfterPostSolveRestarts } = await import('./attach-logs-guarantee.lib.mjs'); // Issue #1952, #2306
 const { collectAndCommitDevelopmentLogArtifacts, fetchIssueType, isDevelopmentLogEnabled, isIssueTypeAwarePromptEnabled } = await import('./development-log.lib.mjs');
 const { createDevelopmentLogFinalizer } = await import('./development-log.finalize.lib.mjs');
 // Issue #1625: centralized markers + tracked comment posting for solve.mjs's own usage-limit notifications (so they're excluded from the "did the AI post anything?" check in --auto-attach-solution-summary).
@@ -1131,13 +1131,20 @@ try {
     }
   }
   // Post-solve restart loops (escalate #1885 first, then finalize #1383, then keep-working #1883):
-  applyRestartResult(await runEscalation({ issueUrl, owner, repo, issueNumber, prNumber, branchName, tempDir, workspaceTmpDir, argv, cleanupClaudeFile, resultSummary }));
-  applyRestartResult(await runAutoEnsureRequirements({ issueUrl, owner, repo, issueNumber, prNumber, branchName, tempDir, argv, cleanupClaudeFile }));
-  applyRestartResult(await runKeepWorkingUntilDone({ issueUrl, owner, repo, issueNumber, prNumber, branchName, tempDir, workspaceTmpDir, argv, cleanupClaudeFile, resultSummary }));
+  // Issue #2306: count the loops that ran iterations (non-null result) so their log is uploaded.
+  let postSolveRestartLoopsRan = 0;
+  const applyPostSolveRestart = result => {
+    if (result) postSolveRestartLoopsRan++;
+    applyRestartResult(result);
+  };
+  applyPostSolveRestart(await runEscalation({ issueUrl, owner, repo, issueNumber, prNumber, branchName, tempDir, workspaceTmpDir, argv, cleanupClaudeFile, resultSummary }));
+  applyPostSolveRestart(await runAutoEnsureRequirements({ issueUrl, owner, repo, issueNumber, prNumber, branchName, tempDir, argv, cleanupClaudeFile }));
+  applyPostSolveRestart(await runKeepWorkingUntilDone({ issueUrl, owner, repo, issueNumber, prNumber, branchName, tempDir, workspaceTmpDir, argv, cleanupClaudeFile, resultSummary }));
   // Issue #2212: runs last on purpose — the earlier loops may still rewrite the
   // pull request description, so the closing references are verified against its
   // final state.
-  applyRestartResult(await runEnsureAllSubIssuesAddressed({ issueUrl, owner, repo, issueNumber, prNumber, branchName, tempDir, workspaceTmpDir, argv, cleanupClaudeFile }));
+  applyPostSolveRestart(await runEnsureAllSubIssuesAddressed({ issueUrl, owner, repo, issueNumber, prNumber, branchName, tempDir, workspaceTmpDir, argv, cleanupClaudeFile }));
+  await attachLogAfterPostSolveRestarts({ restartIterationsRan: postSolveRestartLoopsRan, shouldAttachLogs, prNumber, owner, repo, $, log, sanitizeLogContent, getLogFile, attachLogToGitHub, argv, sessionId, tempDir, anthropicTotalCostUSD, resultModelUsage });
   // Start watch mode if enabled OR if we need to handle uncommitted changes
   if (argv.verbose) {
     await log('');
