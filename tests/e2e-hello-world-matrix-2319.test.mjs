@@ -17,7 +17,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 
-import { buildE2eSolveArgv, checkBodyRegenerated, checkDiffShape, E2E_MATRIX, evaluateE2eRun, formatE2eReport, logPrintsHelloWorld, parseIssue, parseIssueUrl, selectPullRequest, summariseChecks } from '../scripts/e2e-hello-world.lib.mjs';
+import { buildE2eSolveArgv, checkBodyRegenerated, checkDiffShape, E2E_MATRIX, escapeTableCell, evaluateE2eRun, formatE2eReport, logPrintsHelloWorld, parseIssue, parseIssueUrl, selectPullRequest, summariseChecks } from '../scripts/e2e-hello-world.lib.mjs';
 import { formatChangesSection } from '../src/pull-request-changes.lib.mjs';
 import { AUTOMATION_STOPPED_MARKER } from '../src/tool-comments.lib.mjs';
 import { createYargsConfig } from '../src/solve.config.lib.mjs';
@@ -171,4 +171,15 @@ test('the report is a table with one row per assertion', () => {
   const report = formatE2eReport({ tool: 'agent', model: 'formal-ai', issueUrl: ISSUE_URL, pullRequestUrl: 'https://github.com/o/r/pull/2', evaluation });
   assert.match(report, /^### ✅ `--tool agent --model formal-ai`/);
   assert.equal(report.match(/^\| .* \| ✅ \|/gm).length, evaluation.results.length);
+});
+
+test('report cells escape backslashes before pipes and stay on one line', () => {
+  assert.equal(escapeTableCell('a|b'), 'a\\|b');
+  assert.equal(escapeTableCell('a\\|b'), 'a\\\\\\|b', 'an existing backslash cannot un-escape the pipe');
+  assert.equal(escapeTableCell('one\ntwo'), 'one two');
+  const evaluation = { passed: false, results: [{ name: 'x', ok: false, reason: 'C:\\tmp | "a\nb"' }] };
+  const row = formatE2eReport({ tool: 'claude', model: 'formal-ai', issueUrl: ISSUE_URL, evaluation })
+    .split('\n')
+    .find(line => line.startsWith('| x |'));
+  assert.equal(row, '| x | ❌ | C:\\\\tmp \\| "a b" |');
 });

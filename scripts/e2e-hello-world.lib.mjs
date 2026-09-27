@@ -88,7 +88,7 @@ const WORKFLOW_FILE = /^\.github\/workflows\/[^/]+\.ya?ml$/;
 
 /**
  * Files that are never part of a Hello World answer. The first group is what
- * solve itself commits as a task placeholder (#2312 removes it before the
+ * solve itself commits as a task placeholder (solve reverts it before the
  * session ends); the second is what a compiler leaves behind — the stray
  * `Main.class`/`Main.jar` of the 2026-09-27 Kotlin run.
  */
@@ -204,9 +204,16 @@ export function evaluateE2eRun({ pullRequest = null, files = [], checks = [], wo
   return { passed: results.every(result => result.ok), results };
 }
 
+/** One markdown table cell: backslashes first, then pipes, and no line breaks. */
+export const escapeTableCell = value =>
+  String(value ?? '')
+    .replace(/\\/g, '\\\\')
+    .replace(/\|/g, '\\|')
+    .replace(/\r?\n/g, ' ');
+
 /** A GitHub step-summary table of one run's results. */
 export function formatE2eReport({ tool, model, issueUrl, pullRequestUrl = null, evaluation }) {
   const lines = [`### ${evaluation.passed ? '✅' : '❌'} \`--tool ${tool} --model ${model}\``, '', `Issue: ${issueUrl}`, `Pull request: ${pullRequestUrl ?? 'none'}`, '', '| Assertion | Result | Detail |', '|---|---|---|'];
-  for (const result of evaluation.results) lines.push(`| ${result.name} | ${result.ok ? '✅' : '❌'} | ${String(result.reason).replace(/\|/g, '\\|')} |`);
+  for (const result of evaluation.results) lines.push(`| ${result.name} | ${result.ok ? '✅' : '❌'} | ${escapeTableCell(result.reason)} |`);
   return `${lines.join('\n')}\n`;
 }
