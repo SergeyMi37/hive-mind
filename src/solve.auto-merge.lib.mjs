@@ -34,7 +34,7 @@ const { mergePullRequest, getDetailedCIStatus, rerunWorkflowRun, getWorkflowRuns
 // Issue #2182: guard rails for this loop (wall-clock ceiling, draft self-heal,
 // classified merge failures). See solve.auto-merge-guards.lib.mjs.
 const autoMergeGuards = await import('./solve.auto-merge-guards.lib.mjs');
-const { DRAFT_RECHECK_DELAY_MS, evaluateWatchTimeout, resolveDraftBlocker, resolveMergeFailure, revertPlaceholderBeforeMerge } = autoMergeGuards;
+const { buildDeliberateDraftFeedback, DRAFT_RECHECK_DELAY_MS, evaluateWatchTimeout, resolveDraftBlocker, resolveMergeFailure, revertPlaceholderBeforeMerge } = autoMergeGuards;
 // Re-exported so callers and tests keep a single entry point for the watch loop.
 export const { DEFAULT_WATCH_TIMEOUT_HOURS, normalizeWatchTimeoutHours } = autoMergeGuards;
 // Import GitHub functions for log attachment
@@ -175,10 +175,13 @@ export const watchUntilMergeable = async params => {
   }
   await log('');
 
+  // Issue #2263: a failed session still vetoes "ready for review" - the draft
+  // stays. Issue #2312: but it no longer ends the loop before any restart; the
+  // draft blocker below restarts the AI with the failure as feedback, and only an
+  // exhausted restart budget stops the run.
   const readinessVeto = getPullRequestLeftInDraft({ owner, repo, prNumber });
   if (readinessVeto?.kind === 'failure') {
-    await log(formatAligned('❌', 'MONITORING STOPPED:', `The solution session failed: ${readinessVeto.reason || 'verification did not succeed'}`, 2), { level: 'error' });
-    return { success: false, reason: 'solution_session_failed', latestSessionId, latestAnthropicCost };
+    await log(formatAligned('⚠️', 'Previous session failed:', `${readinessVeto.reason || 'verification did not succeed'} - the next AI session will get this as feedback`, 2), { level: 'warning' });
   }
 
   await log('Press Ctrl+C to stop watching manually');
@@ -289,6 +292,7 @@ export const watchUntilMergeable = async params => {
       // so nothing else in this loop notices — the merge then fails with
       // "Pull Request is still a draft" on every single check. Restore
       // "ready for review" here instead of burning an AI restart iteration.
+      let deliberateDraft = null;
       if (blockers.find(b => b.type === 'draft')) {
         const decision = await resolveDraftBlocker({ owner, repo, prNumber, $, log, formatAligned, reportError, reportAutomationStop, verbose: argv.verbose, state: guardState });
         if (decision.action === 'stop') {
@@ -299,6 +303,8 @@ export const watchUntilMergeable = async params => {
           await interruptibleSleep(DRAFT_RECHECK_DELAY_MS);
           continue;
         }
+        // Issue #2312: a draft left on purpose is answered with an AI restart.
+        if (decision.action === 'restart') deliberateDraft = decision.deliberate;
       }
       // Issue #1503/#1918: Reset counter when CI checks exist (safety valve only for
       // consecutive "no runs"). Issue #1918: do NOT reset while getMergeBlockers is still
@@ -547,6 +553,14 @@ export const watchUntilMergeable = async params => {
         feedbackLines.push(`📭 ${emptyPullRequestBlocker}.`);
         feedbackLines.push('');
         feedbackLines.push('Implement the requested change and commit it to the pull request branch. Do not report the work as done while the diff is empty.');
+      }
+      // Issue #2312: Reason 1c: the last working session left the draft on purpose
+      // (the empty diff is already reported above).
+      if (deliberateDraft && !(deliberateDraft.kind === 'no_changes' && isEmptyPullRequest)) {
+        const draftFeedback = buildDeliberateDraftFeedback(deliberateDraft);
+        shouldRestart = true;
+        restartReason = restartReason ? `${restartReason}; ${draftFeedback.restartReason}` : draftFeedback.restartReason;
+        feedbackLines.push(...draftFeedback.feedbackLines);
       }
       // Issue #2007: Reason 1b: Issue title/description edited by the user.
       if (hasIssueMetadataChanges) {

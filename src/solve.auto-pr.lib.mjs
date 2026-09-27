@@ -14,6 +14,7 @@ import { wrapDollarWithGhRetry as _wrapDollarWithGhRetry, execGhWithRetry, isTra
 import { quietProbe } from './quiet-probe.lib.mjs'; // issue #2130: keep read-only probe payloads out of the attached log
 import { stagePlaceholderFileOrExplain, explainNothingStagedAndThrow } from './solve.auto-pr-placeholder.lib.mjs'; // Issue #1825: handles the seed placeholder when the target repo gitignores it.
 import { sanitizeForPublication, writeSanitizedPublicationFile } from './token-sanitization.lib.mjs';
+import { markPullRequestCreatedByThisRun } from './pr-draft-state.lib.mjs'; // Issue #2312: a draft this run created is never left behind.
 import { isPullRequestAlreadyExistsError, findExistingPullRequestUrl } from './github-pr-idempotency.lib.mjs'; // Issue #2168: a retried `gh pr create` must not fail because the first (5xx'd) attempt already created the PR.
 
 export async function handleAutoPrCreation({ argv, tempDir, branchName, issueNumber, owner, repo, defaultBranch, forkedRepo, isContinueMode, prNumber, log, formatAligned, $, reportError, path, fs }) {
@@ -972,6 +973,7 @@ ${prBody}`,
               }
               // Store PR info globally for error handlers
               global.createdPR = { number: localPrNumber, url: prUrl };
+              markPullRequestCreatedByThisRun({ owner, repo, prNumber: localPrNumber });
               await log(formatAligned('✅', 'PR created:', `#${localPrNumber}`));
               await log(formatAligned('📍', 'PR URL:', prUrl));
               if (assigneeFailed) {

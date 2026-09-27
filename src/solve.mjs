@@ -134,6 +134,11 @@ const cleanupWrapper = async () => {
 };
 const interruptWrapper = createInterruptWrapper({ cleanupContext, checkForUncommittedChanges, shouldAttachLogs, attachLogToGitHub, getLogFile, sanitizeLogContent, $, log });
 initializeExitHandler(getAbsoluteLogPath, log, cleanupWrapper, interruptWrapper, ({ code, reason, failureActionSection }) => notifyIssueAboutPrePullRequestFailure({ code, reason, failureActionSection, argv, globalState: global, $, log, getLogFile, shouldAttachLogs, attachLogToGitHub, sanitizeLogContent, rawCommand }));
+// Issue #2312: the tool never leaves a pull request in draft at the end of the run.
+exitHandler.setRunEndHook(async ({ reason }) => {
+  const { restoreDeliberateDraftsAtRunEnd } = await import('./pr-draft-state.lib.mjs');
+  await restoreDeliberateDraftsAtRunEnd({ $, log, formatAligned, reason: `run end (${reason})`, reportError });
+});
 installGlobalExitHandlers({ handleProcessErrors: false }); // #2117: solve's richer process-error handlers below must not race a duplicate pair.
 // Issue #1823: Configure the working-session guard. When the experimental --do-not-shutdown-in-the-middle-of-working-session flag is set (hive passes it to every worker), an interrupt received during an AI working session is deferred: solve lets the AI finish, auto-commits, then shuts down gracefully instead of aborting the AI tool mid-run.
 configureWorkingSession({ enabled: argv['do-not-shutdown-in-the-middle-of-working-session'] === true, log });
@@ -1070,6 +1075,7 @@ try {
   await showSessionSummary(sessionId, limitReached, argv, issueUrl, tempDir, shouldAttachLogs);
   // Issue #1571: Defense-in-depth guard — skip post-processing if auto-continue is handling it (prevents "Solution Draft Log" / "Ready to merge" comments before "Auto Resume")
   if (limitReached && (argv.autoResumeOnLimitReset || argv.autoRestartOnLimitReset) && global.limitResetTime) {
+    exitHandler.setRunEndHook(null); // #2312: the run continues in the child process
     await safeExit(0, 'Auto-continue child process will handle post-processing');
   }
   await enforceRequestedBaseBranch();
