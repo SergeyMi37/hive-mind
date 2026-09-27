@@ -72,7 +72,7 @@ const { validateAndExitOnInvalidClaudeSubAgentModel, validateAndExitOnInvalidMod
 const { autoAcceptInviteForRepo } = await import('./solve.accept-invite.lib.mjs');
 const { handleAutoForkOption, handleMaintainerForkAccess } = await import('./solve.fork-detection.lib.mjs');
 const { resolveUncommittedChangesTool } = await import('./solve.tool-uncommitted.lib.mjs');
-const { classifyFormalAiToolResult } = await import('./formal-ai.lib.mjs');
+const { classifySessionResult } = await import('./session-result.lib.mjs'); // Issue #2316
 const logFile = await initializeLogFile(null);
 const versionInfo = await getVersionInfo();
 const rawCommand = await logSolveStartup(versionInfo);
@@ -682,7 +682,7 @@ try {
     });
     toolResult = claudeResult;
   }
-  toolResult = classifyFormalAiToolResult({ model: argv.model, toolResult });
+  toolResult = await classifySessionResult({ toolResult, argv, owner, repo, prNumber, $, log });
   // Issue #2190: the router auth guard killed the CLI (the task used a credential other than its router token).
   // Not a tool failure to retry — a security stop, with its own exit code so the supervisor can tell it apart.
   if (toolResult?.routerAuthViolation) {
@@ -927,7 +927,7 @@ try {
     }
   }
   // Skip failure exit if limit reached with auto-resume (continues to showSessionSummary/autoContinueWhenLimitResets)
-  const shouldSkipFailureExitForAutoLimitContinue = limitReached && argv.autoResumeOnLimitReset;
+  const shouldSkipFailureExitForAutoLimitContinue = (limitReached && argv.autoResumeOnLimitReset) || toolResult.restartWithFeedback; // Issue #2316: the restart loop runs the next session with feedback
   if ((!success || errorDuringExecution) && !shouldSkipFailureExitForAutoLimitContinue) {
     // Issue #942: show all three resume options on failure for richer guidance.   1. Interactive claude  - opens Claude Code interactively (claude only)   2. Autonomous claude   - one-shot claude --resume w/ --dangerously-skip-permissions -p (claude only)   3. Solve resume        - re-enters solve.mjs with --resume, preserving tool/model/dir
     const toolForFailure = argv.tool || 'claude';
@@ -1061,7 +1061,7 @@ try {
   }
   // When limit is reached, force auto-commit of any uncommitted changes to preserve work. Issue #1834 (PR #1835 feedback): "on all critical errors we auto commit uncommitted changes by default." A failed/errored session is a critical error, so auto-commit (and push) to preserve any work the agent left on disk. On by default; disable via HIVE_MIND_AUTO_COMMIT_ON_CRITICAL_ERROR=false.
   const { criticalErrorRecovery } = await import('./config.lib.mjs');
-  const criticalError = success === false || errorDuringExecution === true;
+  const criticalError = (success === false || errorDuringExecution === true) && !toolResult.restartWithFeedback;
   const shouldAutoCommit = argv['auto-commit-uncommitted-changes'] || limitReached || (criticalError && criticalErrorRecovery.autoCommitUncommittedChanges);
   const autoRestartEnabled = argv['autoRestartOnUncommittedChanges'] !== false;
   const shouldRestart = await checkForUncommittedChanges(tempDir, owner, repo, branchName, $, log, shouldAutoCommit, autoRestartEnabled);

@@ -288,10 +288,7 @@ export const displayBudgetStats = async (usage, tokenUsage, log) => {
       const sub = subSessions[i];
       const subPeak = sub.peakContextUsage || 0;
       const parts = [];
-      if (contextLimit && subPeak > 0) {
-        const pct = ((subPeak / contextLimit) * 100).toFixed(0);
-        parts.push(`${formatNumber(subPeak)} / ${formatNumber(contextLimit)} (${pct}%) input tokens`);
-      }
+      if (contextLimit && subPeak > 0) parts.push(formatInputContextPart(subPeak, contextLimit, formatNumber));
       if (outputLimit) {
         const outPct = ((sub.outputTokens / outputLimit) * 100).toFixed(0);
         parts.push(`${formatNumber(sub.outputTokens)} / ${formatNumber(outputLimit)} (${outPct}%) output tokens`);
@@ -302,10 +299,7 @@ export const displayBudgetStats = async (usage, tokenUsage, log) => {
     }
   } else if (peakContext > 0) {
     const parts = [];
-    if (contextLimit) {
-      const pct = ((peakContext / contextLimit) * 100).toFixed(0);
-      parts.push(`${formatNumber(peakContext)} / ${formatNumber(contextLimit)} (${pct}%) input tokens`);
-    }
+    if (contextLimit) parts.push(formatInputContextPart(peakContext, contextLimit, formatNumber));
     if (outputLimit) {
       const outPct = ((usage.outputTokens / outputLimit) * 100).toFixed(0);
       parts.push(`${formatNumber(usage.outputTokens)} / ${formatNumber(outputLimit)} (${outPct}%) output tokens`);
@@ -498,7 +492,14 @@ const formatTokensCompact = tokens => {
   return tokens.toLocaleString();
 };
 
+// Issue #2316: a figure larger than the context window cannot be the context of
+// one request - it is a sum over requests (Codex reports one `turn.completed`
+// usage for a turn of many requests and compactions). The Rust run printed it as
+// `6.2M / 200K (3092%) input tokens`; name it as the cumulative total it is.
 const formatInputContextPart = (inputTokens, contextLimit, format) => {
+  if (contextLimit && inputTokens > contextLimit) {
+    return `${format(inputTokens)} input tokens across requests (cumulative, larger than the ${format(contextLimit)} context window, so not one request's context)`;
+  }
   if (contextLimit && inputTokens > 0) {
     const pct = ((inputTokens / contextLimit) * 100).toFixed(0);
     return `${format(inputTokens)} / ${format(contextLimit)} (${pct}%) input tokens`;
@@ -788,12 +789,7 @@ export const buildBudgetStatsString = (tokenUsage, subAgentCalls = null) => {
             const callInput = getCumulativeContextInputTokens(cu);
             const callOutput = cu.outputTokens || 0;
             const parts = [];
-            if (contextLimit) {
-              const pct = ((callInput / contextLimit) * 100).toFixed(0);
-              parts.push(`${formatTokensCompact(callInput)} / ${formatTokensCompact(contextLimit)} (${pct}%) input tokens`);
-            } else {
-              parts.push(`${formatTokensCompact(callInput)} input tokens`);
-            }
+            parts.push(formatInputContextPart(callInput, contextLimit, formatTokensCompact) || `${formatTokensCompact(callInput)} input tokens`);
             if (outputLimit) {
               const outPct = ((callOutput / outputLimit) * 100).toFixed(0);
               parts.push(`${formatTokensCompact(callOutput)} / ${formatTokensCompact(outputLimit)} (${outPct}%) output tokens`);
@@ -815,12 +811,7 @@ export const buildBudgetStatsString = (tokenUsage, subAgentCalls = null) => {
           const avgOutput = Math.round(usage.outputTokens / callCount);
           for (let i = 0; i < matchingCalls.length; i++) {
             const parts = [];
-            if (contextLimit) {
-              const pct = ((avgInput / contextLimit) * 100).toFixed(0);
-              parts.push(`~${formatTokensCompact(avgInput)} / ${formatTokensCompact(contextLimit)} (${pct}%) input tokens`);
-            } else {
-              parts.push(`~${formatTokensCompact(avgInput)} input tokens`);
-            }
+            parts.push(`~${formatInputContextPart(avgInput, contextLimit, formatTokensCompact) || `${formatTokensCompact(avgInput)} input tokens`}`);
             if (outputLimit) {
               const outPct = ((avgOutput / outputLimit) * 100).toFixed(0);
               parts.push(`~${formatTokensCompact(avgOutput)} / ${formatTokensCompact(outputLimit)} (${outPct}%) output tokens`);

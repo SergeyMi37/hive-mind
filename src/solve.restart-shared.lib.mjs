@@ -37,7 +37,8 @@ const { log, formatAligned, extractToolErrorCore, getLogFile, setLogFile } = lib
 const { ensurePullRequestBaseBranch } = await import('./solve.pr-base-guard.lib.mjs');
 const { ensureAiToolScratchIgnored, filterAiToolScratchFromStatus } = await import('./ai-tool-scratch.lib.mjs');
 const { RESOURCE_PHASE_RESTART_AFTER, RESOURCE_PHASE_RESTART_BEFORE, recordResourceSnapshot } = await import('./solve.resource-diagnostics.lib.mjs');
-const { classifyFormalAiToolResult } = await import('./formal-ai.lib.mjs');
+const { classifySessionResult } = await import('./session-result.lib.mjs'); // Issue #2316
+const { takeRepeatedToolCallFeedback } = await import('./tool-call-loop-guard.lib.mjs');
 const { buildUncommittedChangesFeedback } = await import('./uncommitted-changes-feedback.lib.mjs');
 // Issue #2123: shared draft/ready transitions for working sessions.
 const { ensurePullRequestIsDraft, ensurePullRequestIsReady, ensurePullRequestStaysDraftAfterFailure } = await import('./pr-draft-state.lib.mjs');
@@ -193,7 +194,7 @@ export const executeToolIteration = async params => {
   // Issue #2313: after two identical sessions with the same input, the next input
   // must differ; and the input is recorded so "no progress" is only concluded
   // when a changed input still produced the same outcome.
-  const feedbackLines = [...(params.feedbackLines || []), ...takeRepeatedSessionFeedback()];
+  const feedbackLines = [...(params.feedbackLines || []), ...takeRepeatedSessionFeedback(), ...takeRepeatedToolCallFeedback()]; // Issue #2316: the breaker's reason
   noteSessionInput(feedbackLines);
 
   await recordResourceSnapshot({
@@ -515,7 +516,7 @@ export const executeToolIteration = async params => {
       });
     }
 
-    toolResult = classifyFormalAiToolResult({ model: argv.model, toolResult });
+    toolResult = await classifySessionResult({ toolResult, argv, owner, repo, prNumber, $, log });
     if (toolResult?.formalAiNonExecution) {
       await log(`❌ ${toolResult.errorInfo.message}`, { level: 'error' });
     }

@@ -78,15 +78,18 @@ assert.equal(REPEATED_TOOL_CALL_LIMIT_DEFAULT, 3, 'the issue prescribes breaking
 }
 
 {
-  // Succeeding calls never count, no matter how many of them there are: the 547
-  // repeats mattered because every single one came back as an error.
+  // Succeeding calls are not failures: five identical successes stay below the
+  // loop threshold, and a success in between resets nothing on the failure side.
+  // (Issue #2316 made a *run* of identical successful calls trip too - see
+  // tests/repeated-tool-call-all-tools-2316.test.mjs.)
   const breaker = createRepeatedToolCallBreaker();
-  for (let i = 0; i < 10; i++) {
+  for (let i = 0; i < 5; i++) {
     const { id, event } = toolUseEvent();
     breaker.observe(event);
     breaker.observe(toolResultEvent(id, { isError: false, content: 'clicked' }));
   }
-  assert.equal(breaker.tripped, false, 'successful calls are not a loop');
+  assert.equal(breaker.tripped, false, 'five identical successful calls are not yet a loop');
+  assert.equal(breaker.counts().size, 0, 'successes are not counted as failures');
 }
 
 {
