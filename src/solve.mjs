@@ -1130,21 +1130,16 @@ try {
       await log('⚠️  PR title/description still not updated after restart');
     }
   }
-  // Post-solve restart loops (escalate #1885 first, then finalize #1383, then keep-working #1883):
-  // Issue #2306: count the loops that ran iterations (non-null result) so their log is uploaded.
-  let postSolveRestartLoopsRan = 0;
-  const applyPostSolveRestart = result => {
-    if (result) postSolveRestartLoopsRan++;
-    applyRestartResult(result);
-  };
+  // Post-solve restart loops (escalate #1885 first, then finalize #1383, then keep-working #1883); #2306: a non-null result means iterations ran
+  const postSolveRestarts = [];
+  const applyPostSolveRestart = result => applyRestartResult(postSolveRestarts.push(result) && result);
   applyPostSolveRestart(await runEscalation({ issueUrl, owner, repo, issueNumber, prNumber, branchName, tempDir, workspaceTmpDir, argv, cleanupClaudeFile, resultSummary }));
   applyPostSolveRestart(await runAutoEnsureRequirements({ issueUrl, owner, repo, issueNumber, prNumber, branchName, tempDir, argv, cleanupClaudeFile }));
   applyPostSolveRestart(await runKeepWorkingUntilDone({ issueUrl, owner, repo, issueNumber, prNumber, branchName, tempDir, workspaceTmpDir, argv, cleanupClaudeFile, resultSummary }));
-  // Issue #2212: runs last on purpose — the earlier loops may still rewrite the
-  // pull request description, so the closing references are verified against its
-  // final state.
+  // Issue #2212: runs last on purpose — the earlier loops may still rewrite the pull
+  // request description, so the closing references are verified against its final state.
   applyPostSolveRestart(await runEnsureAllSubIssuesAddressed({ issueUrl, owner, repo, issueNumber, prNumber, branchName, tempDir, workspaceTmpDir, argv, cleanupClaudeFile }));
-  await attachLogAfterPostSolveRestarts({ restartIterationsRan: postSolveRestartLoopsRan, shouldAttachLogs, prNumber, owner, repo, $, log, sanitizeLogContent, getLogFile, attachLogToGitHub, argv, sessionId, tempDir, anthropicTotalCostUSD, resultModelUsage });
+  await attachLogAfterPostSolveRestarts({ restartIterationsRan: postSolveRestarts.filter(Boolean).length, shouldAttachLogs, prNumber, owner, repo, $, log, sanitizeLogContent, getLogFile, attachLogToGitHub, argv, sessionId, tempDir, anthropicTotalCostUSD, resultModelUsage });
   // Start watch mode if enabled OR if we need to handle uncommitted changes
   if (argv.verbose) {
     await log('');
