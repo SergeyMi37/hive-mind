@@ -161,7 +161,8 @@ await test('changed input + same outcome -> the no-progress verdict stands', asy
 
 await test('every restart records its input and appends the escalation (executeToolIteration)', () => {
   const source = readFileSync(join(root, 'src', 'solve.restart-shared.lib.mjs'), 'utf8');
-  assert.match(source, /const feedbackLines = \[\.\.\.\(params\.feedbackLines \|\| \[\]\), \.\.\.takeRepeatedSessionFeedback\(\)\];\n\s+noteSessionInput\(feedbackLines\);/);
+  // #2316 appends the repeated-tool-call breaker's reason to the same input, so it counts as a changed input too.
+  assert.match(source, /const feedbackLines = \[\.\.\.\(params\.feedbackLines \|\| \[\]\), \.\.\.takeRepeatedSessionFeedback\(\)(, \.\.\.takeRepeatedToolCallFeedback\(\))?\];[^\n]*\n\s+noteSessionInput\(feedbackLines\);/);
 });
 
 console.log(`\nResults: ${passed} passed, ${failed} failed`);

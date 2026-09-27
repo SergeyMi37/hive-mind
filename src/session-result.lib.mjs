@@ -55,8 +55,8 @@ export const classifySessionResult = async ({ toolResult, argv, owner, repo, prN
   };
   if (owner && repo && prNumber && typeof $ === 'function') {
     try {
-      const posted = await postTrackedComment({ $, owner, repo, targetNumber: prNumber, body: buildRepeatedToolCallComment({ verdict, restarting }) });
-      if (!posted?.ok) await log(`⚠️ Could not post the repeated-tool-call comment: ${posted?.stderr || 'unknown error'}`, { level: 'warning' });
+      const { ok, stderr } = (await postTrackedComment({ $, owner, repo, targetNumber: prNumber, body: buildRepeatedToolCallComment({ verdict, restarting }) })) || {};
+      if (!ok) await log(`⚠️ Could not post the repeated-tool-call comment: ${stderr || 'unknown error'}`, { level: 'warning' });
     } catch (error) {
       await log(`⚠️ Could not post the repeated-tool-call comment: ${error.message}`, { level: 'warning' });
     }
