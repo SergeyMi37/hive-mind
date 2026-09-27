@@ -304,7 +304,12 @@ export const createDockerSimulator = ({ images = {}, pull = {}, health = DEFAULT
     if (args[0] === 'system' && args[1] === 'df') return { stdout: `Images|${[...simulator.digests].reduce((sum, id) => sum + simulator.sizeOf(id), 0)}B\nContainers|0B` };
     if (args[0] === 'ps') {
       const label = flagValue(args, '--filter')?.replace(/^label=/, '');
-      return { stdout: [...simulator.containers.entries()].filter(([, container]) => (args.includes('--all') || container.running) && (!label || container.labels?.includes(label))).map(([name]) => name).join('\n') };
+      return {
+        stdout: [...simulator.containers.entries()]
+          .filter(([, container]) => (args.includes('--all') || container.running) && (!label || container.labels?.includes(label)))
+          .map(([name]) => name)
+          .join('\n'),
+      };
     }
     if (args[0] === 'buildx' && args[1] === 'imagetools') {
       if (!registry) fail(`docker: 'buildx' is not a docker command.`);

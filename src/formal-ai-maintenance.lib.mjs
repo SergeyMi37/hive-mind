@@ -9,7 +9,7 @@
  *      nothing is left, stop the sidecar. Must run first — the update and the
  *      CLI refresh both require an idle host, and a crashed task would
  *      otherwise keep the sidecar alive forever.
-  *   2. **Unload the image** once Formal AI has been unused for
+ *   2. **Unload the image** once Formal AI has been unused for
  *      `HIVE_MIND_FORMAL_AI_UNLOAD_AFTER` (issue #2305). Runs before the
  *      update so an unused host is never offered a new release.
  *   3. **Update the Formal AI image**, including the non-destructive memory
