@@ -117,15 +117,20 @@ Telegram 机器人部署不会让 Formal AI 常驻运行。请求 `--model forma
 
 如果容器无法启动，或任务容器无法接入该网络，任务会被停止，而不是改用其他模型继续（[issue #2146](https://github.com/link-assistant/hive-mind/issues/2146)）。
 
-| 环境变量                          | 默认值   | 说明                                                                                                              |
-| --------------------------------- | -------- | ----------------------------------------------------------------------------------------------------------------- |
-| `HIVE_MIND_FORMAL_AI_SIDECAR`     | `1`      | 当部署已提供 Formal AI（如 `docker-compose.yml`）时设为 `0`，以免在旁边再启动一个容器。                           |
-| `HIVE_MIND_FORMAL_AI_IMAGE`       | _未设置_ | 固定具体镜像。仅初始版本随镜像固定；设置该变量属于运维决策，因此同时会关闭下面的自动更新。                        |
-| `HIVE_MIND_FORMAL_AI_AUTO_UPDATE` | `1`      | 在没有 Formal AI 任务持有租约时替换镜像。设为 `0` 则保持当前镜像直至手动更换。                                    |
-| `HIVE_MIND_FORMAL_AI_UPDATE_TAG`  | `latest` | 更新所跟随的标签。                                                                                                |
-| `HIVE_MIND_FORMAL_AI_PRIVILEGED`  | `0`      | 以 `--privileged` 运行容器。默认无需开启：容器只提供 HTTP，并通过 `DIND_SKIP_DAEMON=1` 跳过内部 Docker 守护进程。 |
+| 环境变量                                    | 默认值   | 说明                                                                                                                             |
+| ------------------------------------------- | -------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| `HIVE_MIND_FORMAL_AI_SIDECAR`               | `1`      | 当部署已提供 Formal AI（如 `docker-compose.yml`）时设为 `0`，以免在旁边再启动一个容器。                                          |
+| `HIVE_MIND_FORMAL_AI_IMAGE`                 | _未设置_ | 固定具体镜像。仅初始版本随镜像固定；设置该变量属于运维决策，因此同时会关闭下面的自动更新。                                       |
+| `HIVE_MIND_FORMAL_AI_AUTO_UPDATE`           | `1`      | 在没有 Formal AI 任务持有租约时替换镜像。设为 `0` 则保持当前镜像直至手动更换。                                                   |
+| `HIVE_MIND_FORMAL_AI_UPDATE_TAG`            | `latest` | 更新所跟随的标签。                                                                                                               |
+| `HIVE_MIND_FORMAL_AI_UNLOAD_AFTER`          | `5h`     | 连续这么久没有 Formal AI 任务后，删除容器、其网络及所有 Formal AI 镜像（`90m`、`1h30m`、`3600` 秒）。`0` 或 `off` 表示保留镜像。 |
+| `HIVE_MIND_FORMAL_AI_PREFETCH`              | `false`  | 设为 `true` 时，无论主机是否使用 Formal AI 都拉取并更新镜像，且不删除。                                                          |
+| `HIVE_MIND_FORMAL_AI_UPDATE_CHECK_INTERVAL` | `1h`     | 两次向镜像仓库检查新镜像之间的最短间隔。                                                                                         |
+| `HIVE_MIND_FORMAL_AI_PRIVILEGED`            | `0`      | 以 `--privileged` 运行容器。默认无需开启：容器只提供 HTTP，并通过 `DIND_SKIP_DAEMON=1` 跳过内部 Docker 守护进程。                |
 
 更新绝不会盲目替换镜像。它会执行 pull、比较摘要，并遵循 Formal AI 持久化内存升级契约（[formal-ai#982](https://github.com/link-assistant/formal-ai/issues/982)）：先运行无副作用的 `memory upgrade-status` 预检，再执行带逐字节备份与回执的 `memory migrate`，然后启动新镜像并要求 `/health` 报告内存兼容。迁移之后的任何失败都会按回执恢复备份并保留原镜像。详见 [issue #2146 案例研究](case-studies/issue-2146/README.md)。
+
+不使用 Formal AI 的主机不会为它付出任何代价（[issue #2305](https://github.com/link-assistant/hive-mind/issues/2305)）。镜像（约 24 GB）由第一个 `--model formal-ai` 任务拉取，而不是提前拉取。更新每小时检查一次，且仅在镜像存在于主机上并在卸载窗口内被使用过时进行。每次检查先比较镜像仓库中的清单摘要，因此未变化的版本不会下载任何内容。经过验证的更新会删除被替换的镜像。超过 `HIVE_MIND_FORMAL_AI_UNLOAD_AFTER` 没有任务后，会在 sidecar 锁内删除容器、其网络及所有 Formal AI 镜像（当前和之前的），并在日志中记录释放的空间。内存卷始终保留，下一个任务会按镜像仓库摘要重新拉取已接受的构建。容器在镜像的 `VOLUME` 上挂载 tmpfs，并以 `--volumes` 删除，因此不会遗留匿名卷。
 
 #### 空闲时的 CLI 更新
 
