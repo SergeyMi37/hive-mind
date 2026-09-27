@@ -49,7 +49,7 @@
 
 import { createHash } from 'node:crypto';
 
-import { commitUncommittedChangesOnCriticalError } from './critical-error-commit.lib.mjs';
+import { commitUncommittedChangesOnCriticalError, describePreservedWork } from './critical-error-commit.lib.mjs';
 import { filterAiToolScratchFromStatus } from './ai-tool-scratch.lib.mjs';
 import { ensurePullRequestStaysDraftAfterFailure } from './pr-draft-state.lib.mjs';
 import { reportAutomationStop } from './automation-stop-reporting.lib.mjs';
@@ -259,11 +259,12 @@ export const buildNoProgressDetails = ({ previous = null, current = null, remain
  * @param {string} [params.mode] - which loop stopped
  * @param {Object|null} [params.verdict] - from `recordSessionOutcome`
  * @param {number|null} [params.remainingIterations]
+ * @param {Object|null} [params.preserved] - from `commitUncommittedChangesOnCriticalError`
  * @param {boolean} [params.verbose]
  * @param {Function} [params.log]
  * @returns {Promise<Object>} the reporter's result
  */
-export const reportNoProgressStop = async ({ $: command, owner, repo, targetNumber, mode = null, verdict = null, remainingIterations = null, verbose = false, log = noopLog }) =>
+export const reportNoProgressStop = async ({ $: command, owner, repo, targetNumber, mode = null, verdict = null, remainingIterations = null, preserved = null, verbose = false, log = noopLog }) =>
   reportAutomationStop({
     $: command,
     owner,
@@ -272,7 +273,8 @@ export const reportNoProgressStop = async ({ $: command, owner, repo, targetNumb
     reason: NO_PROGRESS_STOP_REASON,
     mode,
     message: 'Two consecutive AI sessions ended with the same final message, the same working tree and the same commit although the second one was given different instructions, so another restart cannot produce a different result.',
-    details: buildNoProgressDetails({ previous: verdict?.previous, current: verdict?.current, remainingIterations }),
+    // Issue #2315: say where the uncommitted work went (never the PR branch).
+    details: [...buildNoProgressDetails({ previous: verdict?.previous, current: verdict?.current, remainingIterations }), ...(preserved ? [describePreservedWork(preserved)] : [])],
     verbose,
     log,
   });
@@ -338,10 +340,10 @@ export const failOnNoProgressBetweenSessions = async ({ owner, repo, prNumber, t
   const preserved = await commitUncommittedChangesOnCriticalError({ tempDir, branchName, $: command, log, reason: 'stopped after two identical AI sessions', push: true });
 
   if (prNumber) {
-    await reportNoProgressStop({ $: command, owner, repo, targetNumber: prNumber, mode, verdict, remainingIterations, verbose, log });
+    await reportNoProgressStop({ $: command, owner, repo, targetNumber: prNumber, mode, verdict, remainingIterations, preserved, verbose, log });
   }
 
-  noProgressFailure = { reason: NO_PROGRESS_STOP_REASON, committed: preserved.committed, pushed: preserved.pushed, occurrences: verdict?.occurrences || 2 };
+  noProgressFailure = { reason: NO_PROGRESS_STOP_REASON, committed: preserved.committed, pushed: preserved.pushed, recoveryBranch: preserved.recoveryBranch || null, occurrences: verdict?.occurrences || 2 };
   return noProgressFailure;
 };
 
