@@ -4,6 +4,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 
 import { findFormalAiClient, loadFormalAiClientRegistry, prepareFormalAiRuntime } from './formal-ai-runtime.lib.mjs';
+import { SECRET_TOOL_ENV_NAMES } from './tool-env-gh-auth.lib.mjs';
 import { assertSupportedFormalAiVersion, parseFormalAiVersion, readFormalAiBinaryVersion } from './formal-ai-version.lib.mjs';
 import { isFormalAiModel } from './models/index.mjs';
 
@@ -111,6 +112,8 @@ export const resolveFormalAiToolExecution = async ({ tool, model, toolPath, work
  */
 export const buildFormalAiEnvExports = env =>
   Object.entries(env || {})
+    // Issue #2314: the command line is logged; a token reaches the tool through the process env only.
+    .filter(([name]) => !SECRET_TOOL_ENV_NAMES.includes(name))
     .map(([name, value]) => `export ${name}=${shellQuote(value)}; `)
     .join('');
 
