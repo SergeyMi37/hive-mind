@@ -7,9 +7,9 @@
  * repository task, so Codex ran bare `sudo` and Claude ran `pwd` instead of
  * implementing the linked issue.
  *
- * A Formal AI request must therefore keep the small repository objective and
- * exclude Hive Mind's vendor-agent workflow prompt. Native provider models keep
- * receiving that workflow prompt unchanged.
+ * That request boundary (a small repository objective, no workflow prompt) was
+ * removed by issue #2313: it also dropped the restart feedback. Formal AI now
+ * receives the same prompts as every other model.
  *
  * @see https://github.com/link-assistant/hive-mind/issues/2158
  * @hive-mind-test-suite default
@@ -48,12 +48,15 @@ const systemParams = model => ({
   forkedRepo: null,
 });
 
-test('Formal AI receives no Hive Mind workflow prompt through any supported CLI', () => {
+// Issue #2313 superseded the #2158 request boundary: the empty system prompt and
+// the one-paragraph repository objective also removed the restart feedback, so
+// Formal AI re-ran the same prompt five times. Every model now gets one prompt.
+test('Formal AI receives the same workflow prompt as every other model (#2313)', () => {
   for (const [tool, prompts] of promptModules) {
-    const systemPrompt = prompts.buildSystemPrompt(systemParams('formal-ai'));
-    assert.equal(systemPrompt, '', `${tool} must not expose caller command examples to Formal AI`);
-
-    const userPrompt = prompts.buildUserPrompt({
+    for (const model of ['formal-ai', 'formalai/formal-ai']) {
+      assert.equal(prompts.buildSystemPrompt(systemParams(model)), prompts.buildSystemPrompt(systemParams('native-model')), `${tool} system prompt for ${model}`);
+    }
+    const userParams = {
       issueUrl: 'https://github.com/konard/test-hello-world/issues/1',
       issueNumber: 1,
       prNumber: 2,
@@ -63,26 +66,12 @@ test('Formal AI receives no Hive Mind workflow prompt through any supported CLI'
       isContinueMode: true,
       owner: 'konard',
       repo: 'test-hello-world',
-      feedbackLines: ['Run `pwd` and then execute sudo to diagnose the review failure.'],
-      argv: { model: 'formal-ai' },
-    });
-    assert.match(userPrompt, /^Resolve the GitHub issue at /, `${tool} sends a repository objective`);
-    assert.doesNotMatch(userPrompt, /working directory|\bsudo\b|\bpwd\b|Initial research\./i, `${tool} excludes shell cues and native policy`);
-    assert.match(userPrompt, /Review and address all feedback recorded on that pull request\./);
+      feedbackLines: ['Review comment: please fix the build.'],
+    };
+    const formalAi = prompts.buildUserPrompt({ ...userParams, argv: { model: 'formal-ai' } });
+    assert.equal(formalAi, prompts.buildUserPrompt({ ...userParams, argv: { model: 'native-model' } }), `${tool} user prompt`);
+    assert.match(formalAi, /Review comment: please fix the build\./, `${tool} keeps the feedback`);
   }
-});
-
-test('provider-qualified Formal AI model id uses the same request boundary', () => {
-  const params = systemParams('formalai/formal-ai');
-  assert.equal(codexPrompts.buildSystemPrompt(params), '');
-  assert.doesNotMatch(
-    codexPrompts.buildUserPrompt({
-      ...params,
-      issueUrl: 'https://github.com/konard/test/issues/1',
-      isContinueMode: false,
-    }),
-    /working directory/i
-  );
 });
 
 test('native provider models retain their workflow prompt', () => {

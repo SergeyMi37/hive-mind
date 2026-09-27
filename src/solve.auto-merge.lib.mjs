@@ -43,7 +43,7 @@ const { sanitizeLogContent, attachLogToGitHub } = githubLib;
 
 // Import shared utilities from the restart-shared module
 const restartShared = await import('./solve.restart-shared.lib.mjs');
-const { checkForUncommittedChanges, getUncommittedChangesDetails, executeToolIteration, buildAutoRestartInstructions, isUsageLimitReached } = restartShared;
+const { checkForUncommittedChanges, getUncommittedChangesDetails, executeToolIteration, buildAutoRestartInstructions, buildUncommittedChangesFeedback, isUsageLimitReached } = restartShared;
 // Issue #1931: deleted/inaccessible repositories, PRs, issues, and branches
 // are terminal states for long-running watch loops, not retryable CI states.
 const terminalStateLib = await import('./github-terminal-state.lib.mjs');
@@ -736,14 +736,8 @@ export const watchUntilMergeable = async params => {
         restartReason = restartReason ? `${restartReason}; Uncommitted changes` : 'Uncommitted changes detected';
         // Get uncommitted changes for display using shared utility
         const changes = await getUncommittedChangesDetails(tempDir);
-        feedbackLines.push('📝 Uncommitted changes detected:');
-        for (const line of changes) {
-          feedbackLines.push(`  ${line}`);
-        }
-        feedbackLines.push('');
-        feedbackLines.push('IMPORTANT: You MUST handle these uncommitted changes by either:');
-        feedbackLines.push('1. COMMITTING them if they are part of the solution (git add + git commit + git push)');
-        feedbackLines.push('2. REVERTING them if they are not needed (git checkout -- <file> or git clean -fd)');
+        // Issue #2313: the exact `git status --porcelain` output and the commit / ignore / delete instruction.
+        feedbackLines.push(...buildUncommittedChangesFeedback(changes));
       }
       if (shouldRestart) {
         // Issue #2119: the run-wide budget is exhausted (it may already have been

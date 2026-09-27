@@ -122,25 +122,9 @@ export async function checkUncommittedChanges({ tempDir, argv, log, $ }) {
         if (statusOutput) {
           await log('📝 Found uncommitted changes - adding to feedback');
 
-          // Add uncommitted changes info to feedbackLines
-          let feedbackLines = [];
-
-          feedbackLines.push('');
-          feedbackLines.push('⚠️ UNCOMMITTED CHANGES DETECTED:');
-          feedbackLines.push('The following uncommitted changes were found in the repository:');
-          feedbackLines.push('');
-
-          for (const line of statusOutput.split('\n')) {
-            feedbackLines.push(`  ${line}`);
-          }
-
-          feedbackLines.push('');
-          feedbackLines.push('IMPORTANT: You MUST handle these uncommitted changes by either:');
-          feedbackLines.push('1. COMMITTING them if they are part of the solution (git add + git commit + git push)');
-          feedbackLines.push('2. REVERTING them if they are not needed (git checkout -- <file> or git clean -fd)');
-          feedbackLines.push('');
-          feedbackLines.push('DO NOT leave uncommitted changes behind. The session will auto-restart until all changes are resolved.');
-          return feedbackLines;
+          // Issue #2313: the same restart feedback every other uncommitted-changes path uses.
+          const { buildUncommittedChangesFeedback } = await import('./uncommitted-changes-feedback.lib.mjs');
+          return buildUncommittedChangesFeedback(statusOutput.split('\n'));
         } else {
           await log('✅ No uncommitted changes found');
         }
