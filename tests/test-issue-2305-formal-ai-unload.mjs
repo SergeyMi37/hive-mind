@@ -119,6 +119,19 @@ test('a host that never ran a Formal AI task never pulls, queries or boots it', 
   assert.equal(count(docker, 'buildx'), 0, 'not even the registry is asked');
   assert.equal(count(docker, 'run'), 0, 'and nothing is booted for "verification"');
   assert.equal(docker.volumes.size, 0);
+
+  // A host upgraded from the eager behaviour carries images it never used: the
+  // first tick removes all of them, and the memory volume stays.
+  const upgradedEnv = makeEnv();
+  const upgraded = makeDocker({ images: { [LATEST]: 'sha256:v2', [BOOTSTRAP_IMAGE]: 'sha256:v1' } });
+  upgraded.volumes.add(FORMAL_AI_MEMORY_VOLUME_NAME);
+  const logs = [];
+  const first = await runFormalAiMaintenanceTick({ env: upgradedEnv, run: upgraded.run, updateClis: noopClis, log: async line => logs.push(line) });
+  assert.equal(first.unload.status, 'unloaded');
+  assert.deepEqual(formalAiImagesOn(upgraded), []);
+  assert.equal(upgraded.volumes.has(FORMAL_AI_MEMORY_VOLUME_NAME), true);
+  assert.match(logs.join('\n'), /Formal AI unloaded \(never used on this host\): removed 2 image\(s\).*freeing 48\.00GB/);
+  assert.equal(count(upgraded, 'pull') + count(upgraded, 'run'), 0);
 });
 
 test('an unchanged registry digest costs one manifest lookup and no pull', async () => {
