@@ -58,6 +58,8 @@ const { quietProbe } = await import('./quiet-probe.lib.mjs');
 // stating exactly why it stopped.
 const stopReportingLib = await import('./automation-stop-reporting.lib.mjs');
 const { reportAutomationStop } = stopReportingLib;
+// Issue #2306: never auto-merge a pull request that leaves required issues open.
+const { checkClosingReferencesBeforeMerge } = await import('./solve.ensure-sub-issues.lib.mjs');
 // Import validation functions for time parsing (used for usage limit wait)
 const validation = await import('./solve.validation.lib.mjs');
 const { calculateWaitTime } = validation;
@@ -413,9 +415,12 @@ export const watchUntilMergeable = async params => {
         // issue blocks only the *automatic* merge — the loop already did its
         // job of making the pull request mergeable. Ask the user to reopen the
         // issue or merge manually instead of merging behind their back.
-        if (isAutoMerge && issueMergeBlockers.length > 0) {
-          await reportAutoMergeBlockedByIssue({ owner, repo, prNumber, issueNumber, mergeBlockers: issueMergeBlockers, verbose: argv.verbose });
-          return { success: false, reason: issueMergeBlockers[0].reason, mergeBlockers: issueMergeBlockers, latestSessionId, latestAnthropicCost };
+        // Issue #2306: the pull request must also close every issue it was
+        // asked to close; re-checked here because the description can change.
+        const mergeBlockers = isAutoMerge ? [...issueMergeBlockers, await checkClosingReferencesBeforeMerge({ owner, repo, issueNumber, prNumber, argv })].filter(Boolean) : issueMergeBlockers;
+        if (isAutoMerge && mergeBlockers.length > 0) {
+          await reportAutoMergeBlockedByIssue({ owner, repo, prNumber, issueNumber, mergeBlockers, verbose: argv.verbose });
+          return { success: false, reason: mergeBlockers[0].reason, mergeBlockers, latestSessionId, latestAnthropicCost };
         }
         if (isAutoMerge) {
           // Attempt to merge the PR
@@ -769,7 +774,7 @@ export const watchUntilMergeable = async params => {
           if (pullResult.code === 0) {
             await log(formatAligned('🔄', 'Synced:', `Local branch ${effectiveBranch} updated from remote`));
           } else {
-            const pullOutput = `${pullResult.stdout || ''}${pullResult.stderr || ''}`.trim() || 'no output';
+            const pullOutput = `${pullResult.stdout?.toString() || ''}${pullResult.stderr?.toString() || ''}`.trim() || 'no output';
             const pullLeftLocalChanges = await checkForUncommittedChanges(tempDir, argv);
             if (pullLeftLocalChanges && /CONFLICT|MERGE_HEAD|unmerged|Automatic merge failed|not concluded your merge/i.test(pullOutput)) {
               await log(formatAligned('⚠️', 'Sync produced merge state:', 'Proceeding with AI restart to resolve it', 2));
