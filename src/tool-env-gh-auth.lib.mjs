@@ -67,12 +67,14 @@ export const assertGhAuthenticatedInToolEnv = async ({ toolEnv, tool = 'the AI t
   try {
     await run('gh', ['auth', 'status'], { env: toolEnv, timeout: GH_TIMEOUT_MS });
   } catch (error) {
+    // Only presence is reported: values read from the environment stay out of
+    // error messages, which callers print as-is.
     const detail = String(error?.stderr || error?.stdout || error?.message || error)
       .trim()
       .split('\n')
       .slice(0, 5)
       .join(' | ');
-    throw new Error(`gh is not authenticated in the environment ${tool} will run with (GH_CONFIG_DIR=${toolEnv?.GH_CONFIG_DIR || 'unset'}, GH_TOKEN ${toolEnv?.GH_TOKEN ? 'set' : 'unset'}): ${detail}`, { cause: error });
+    throw new Error(`gh is not authenticated in the environment ${tool} will run with (GH_CONFIG_DIR ${toolEnv?.GH_CONFIG_DIR ? 'set' : 'unset'}, GH_TOKEN ${toolEnv?.GH_TOKEN ? 'set' : 'unset'}): ${detail}`, { cause: error });
   }
 };
 

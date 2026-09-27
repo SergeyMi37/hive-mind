@@ -108,6 +108,15 @@ await test('the preflight runs gh auth status with the exact tool env and fails 
     return true;
   });
   assert.deepEqual(gh.calls.at(-1).args, ['auth', 'status']);
+  // Only presence is reported; the values themselves never reach the message.
+  const rejectingGh = async () => {
+    throw Object.assign(new Error('Command failed: gh auth status'), { stderr: 'The token in GH_TOKEN is invalid.' });
+  };
+  await assert.rejects(assertGhAuthenticatedInToolEnv({ toolEnv: { ...operatorEnv, GH_CONFIG_DIR: '/srv/operator/gh', GH_TOKEN: TOKEN }, tool: 'agent', run: rejectingGh }), error => {
+    assert.match(error.message, /GH_CONFIG_DIR set, GH_TOKEN set/);
+    assert.doesNotMatch(error.message, /\/srv\/operator\/gh|gho_example_token_value/);
+    return true;
+  });
   assert.equal(gh.calls.at(-1).env, toolEnv);
 
   const ghEnv = await prepareToolGhAuth({ env: operatorEnv, toolEnv, tool: 'agent', run: gh.run });
