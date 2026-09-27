@@ -22,9 +22,10 @@ import * as agentPrompts from '../src/agent.prompts.lib.mjs';
 import * as claudePrompts from '../src/claude.prompts.lib.mjs';
 import * as codexPrompts from '../src/codex.prompts.lib.mjs';
 import * as geminiPrompts from '../src/gemini.prompts.lib.mjs';
-import { classifyFormalAiToolResult } from '../src/formal-ai.lib.mjs';
 import { buildGitHubPullRequestUrl } from '../src/github-url-parser.lib.mjs';
 import * as opencodePrompts from '../src/opencode.prompts.lib.mjs';
+import { clearPullRequestLeftInDraft, ensurePullRequestIsReady } from '../src/pr-draft-state.lib.mjs';
+import { classifySessionResult } from '../src/session-result.lib.mjs';
 import * as qwenPrompts from '../src/qwen.prompts.lib.mjs';
 
 const promptModules = [
@@ -82,37 +83,26 @@ test('native provider models retain their workflow prompt', () => {
   }
 });
 
-test('planned_not_executed is a terminal tool failure, not a successful solve', () => {
-  const result = classifyFormalAiToolResult({
-    model: 'formal-ai',
-    toolResult: {
-      success: true,
-      errorDuringExecution: false,
-      resultSummary: 'Planned, not executed: no artifact named by the request was changed.',
-      pricingInfo: { provider: 'Link.Assistant' },
-    },
-  });
-
-  assert.equal(result.success, false);
-  assert.equal(result.errorDuringExecution, true);
-  assert.equal(result.formalAiNonExecution, true);
-  assert.equal(result.errorInfo.code, 'FORMAL_AI_PLANNED_NOT_EXECUTED');
-  assert.match(result.errorInfo.message, /did not execute repository work/i);
-  assert.deepEqual(result.pricingInfo, { provider: 'Link.Assistant' }, 'unrelated result metadata survives classification');
+// Issue #2319: the Formal AI-only `classifyFormalAiToolResult` is gone. A
+// session that ends with `planned_not_executed` (or any other model's "done"
+// with nothing done) is handled by the generic contract: an empty diff keeps the
+// pull request in draft, and the restart loop runs another session.
+test('planned_not_executed goes through the same session classification as every model', async () => {
+  const summary = 'Planned, not executed: no artifact named by the request was changed.';
+  for (const model of ['formal-ai', 'native-model']) {
+    const toolResult = { success: true, errorDuringExecution: false, resultSummary: summary };
+    assert.equal(await classifySessionResult({ toolResult, argv: { model } }), toolResult, `${model}: the result is not rewritten per model`);
+  }
 });
 
-test('the non-execution classifier is scoped to Formal AI and explicit terminal evidence', () => {
-  const native = { success: true, resultSummary: 'Planned, not executed.' };
-  assert.equal(classifyFormalAiToolResult({ model: 'native-model', toolResult: native }), native);
-
-  const formalAiSuccess = { success: true, resultSummary: 'Implemented the requested files and ran the tests.' };
-  assert.equal(classifyFormalAiToolResult({ model: 'formal-ai', toolResult: formalAiSuccess }), formalAiSuccess);
-
-  const mentionedMarker = { success: true, resultSummary: 'Implemented handling for planned_not_executed and verified the tests.' };
-  assert.equal(classifyFormalAiToolResult({ model: 'formal-ai', toolResult: mentionedMarker }), mentionedMarker, 'mentioning the marker is not itself a terminal state');
-
-  const structuredMarker = { success: true, resultSummary: 'Plan event:\n  terminal_state "planned_not_executed"' };
-  assert.equal(classifyFormalAiToolResult({ model: 'formal-ai', toolResult: structuredMarker }).success, false, 'the structured terminal state is recognized');
+test('a session with an empty diff keeps the pull request in draft for any model', async () => {
+  const emptyDiff = { measured: true, hasChanges: false, filesChanged: 0, additions: 0, deletions: 0, placeholderOnly: true };
+  for (const [index, prNumber] of [21581, 21582].entries()) {
+    const result = await ensurePullRequestIsReady({ owner: 'konard', repo: `hello-${index}`, prNumber, $: async () => ({ code: 0 }), requireChanges: true, changeStats: emptyDiff });
+    assert.equal(result.reason, 'no_changes');
+    assert.equal(result.changed, false, 'the pull request is not marked ready');
+    clearPullRequestLeftInDraft({ owner: 'konard', repo: `hello-${index}`, prNumber });
+  }
 });
 
 test('auto-continue turns a discovered PR number into a PR URL', () => {

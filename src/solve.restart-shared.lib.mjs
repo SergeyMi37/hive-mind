@@ -517,9 +517,6 @@ export const executeToolIteration = async params => {
     }
 
     toolResult = await classifySessionResult({ toolResult, argv, owner, repo, prNumber, $, log });
-    if (toolResult?.formalAiNonExecution) {
-      await log(`❌ ${toolResult.errorInfo.message}`, { level: 'error' });
-    }
 
     await ensurePullRequestBaseBranch({ owner, repo, prNumber, argv, log, formatAligned, $ });
     await recordResourceSnapshot({

@@ -19,7 +19,6 @@
 
 import { REPEATED_TOOL_CALL_REASON, takeRepeatedToolCallVerdict } from './tool-call-loop-guard.lib.mjs';
 import { postTrackedComment } from './tool-comments.lib.mjs';
-import { classifyFormalAiToolResult } from './formal-ai.lib.mjs';
 
 /** A restart loop runs another session after this one. */
 export const willRestartAfterSession = argv => !!(argv?.autoRestartUntilMergeable || argv?.watch);
@@ -38,7 +37,7 @@ export const buildRepeatedToolCallComment = ({ verdict, restarting }) => ['## ðŸ
  * @returns {Promise<Object>} the classified tool result
  */
 export const classifySessionResult = async ({ toolResult, argv, owner, repo, prNumber, $, log = async () => {} }) => {
-  let result = classifyFormalAiToolResult({ model: argv?.model, toolResult });
+  let result = toolResult;
   const verdict = takeRepeatedToolCallVerdict();
   if (!verdict || !result) return result;
 

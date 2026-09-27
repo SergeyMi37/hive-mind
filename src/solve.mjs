@@ -690,10 +690,6 @@ try {
     await log(`❌ ${formatRouterAuthViolation(toolResult.routerAuthViolation)}`, { level: 'error' });
     await safeExit(EXIT_CODE_ROUTER_AUTH_VIOLATION, 'Router auth guard: the task tried to use a credential other than its router token (issue #2190)');
   }
-  if (toolResult?.formalAiNonExecution) {
-    await log(`❌ ${toolResult.errorInfo.message}`, { level: 'error' });
-    await log('   The deterministic terminal response will not be retried as a mergeability problem.', { level: 'error' });
-  }
   try {
     await recordAfterAgentSize({ tempDir, beforeBytes: cleanupContext.diskDiagnostics?.beforeBytes ?? null, log });
   } catch (diskError) {
