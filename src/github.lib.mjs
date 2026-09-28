@@ -19,7 +19,7 @@ import { formatResetTimeWithRelative } from './usage-limit.lib.mjs'; // See: htt
 import { getToolDisplayName, getModelInfoForComment } from './models/index.mjs';
 export { getToolDisplayName }; // Re-export for use by other modules
 import { buildBudgetStatsString } from './claude.budget-stats.lib.mjs';
-import { buildCostInfoString } from './github-cost-info.lib.mjs';
+import { buildCostInfoString, isFreeModelPricing } from './github-cost-info.lib.mjs';
 export { buildCostInfoString };
 // #1756: route gh exec calls through transient + rate-limit retry wrapper
 import { execGhWithRetry } from './github-rate-limit.lib.mjs';
@@ -508,7 +508,8 @@ export async function attachLogToGitHub(options) {
     failureActionSection = null,
     recordResources = recordResourceSnapshot, // Issue #2189: injectable for tests
   } = options;
-  const budgetStats = budgetStatsData ? buildBudgetStatsString(budgetStatsData.tokenUsage, budgetStatsData.subAgentCalls) : '';
+  // Issue #2318: a free model's comment carries one cost figure, the $0.00 of the cost estimation section.
+  const budgetStats = budgetStatsData ? buildBudgetStatsString(budgetStatsData.tokenUsage, budgetStatsData.subAgentCalls, { freeModel: isFreeModelPricing(pricingInfo) }) : '';
   const targetName = targetType === 'pr' ? 'Pull Request' : 'Issue';
   let uploadPhaseEntered = false;
   try {

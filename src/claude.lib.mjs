@@ -35,7 +35,7 @@ import { deployPlaywrightSkill } from './playwright-skill.lib.mjs'; // Issue #21
 import { formatRouterAuthViolation, startRouterAuthGuard } from './router-auth-guard.lib.mjs'; // Issue #2190
 import { createThinkingBlockRecovery } from './claude.thinking-block-recovery.lib.mjs'; // Issue #1834 (PR #1835 feedback)
 import { buildMissingClaudeResultMessage, collectClaudeStreamEventFacts, getClaudeMessageContent, shouldFailClaudeStreamWithoutResult, updateTerminalToolResult } from './claude.stream-events.lib.mjs';
-import { createRepeatedToolCallBreaker, explainFailureWithToolHistory } from './repeated-tool-call-breaker.lib.mjs'; // Issue #2247 (H4/H10)
+import { createRepeatedToolCallBreaker, explainFailureWithToolHistory, publishRepeatedToolCallVerdict } from './repeated-tool-call-breaker.lib.mjs'; // Issue #2247 (H4/H10), #2316
 import { formatNumber, mapModelToId, checkModelVisionCapability, resolveClaudeModelForExecution } from './claude.model-utils.lib.mjs';
 import { renameLogToSessionId } from './session-log-rename.lib.mjs'; // Issue #2160
 import { showResumeCommand } from './claude.resume-output.lib.mjs';
@@ -568,7 +568,7 @@ export const executeClaudeCommand = async params => {
               if (!repeatedToolCallFailure) {
                 const toolCallLoop = repeatedToolCallBreaker.observe(data);
                 if (toolCallLoop) {
-                  repeatedToolCallFailure = toolCallLoop;
+                  repeatedToolCallFailure = publishRepeatedToolCallVerdict(toolCallLoop);
                   await log(`\n🛑 ${toolCallLoop.reason}`, { level: 'error' });
                   await log('   Stopping the session — repeating it cannot make progress (issue #2247).', { level: 'error' });
                   if (!forceExitTriggered && execCommand?.kill) {

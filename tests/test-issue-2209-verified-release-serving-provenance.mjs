@@ -85,6 +85,7 @@ const provenanceOfTask = async ({ sidecar, baseUrl, hostEnv, workdir }) => {
       loadRegistryImpl: async () => [{ id: 'agent', global_configs: [] }],
       seedImpl: async () => [],
       configureImpl: async () => {},
+      ghAuthImpl: async () => ({}),
     },
   });
   try {
